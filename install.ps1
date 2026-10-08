@@ -14,7 +14,7 @@ $ServiceName = "komari-agent"
 $GitHubProxy = ""
 $KomariArgs = @()
 $InstallVersion = ""
-$ReleaseRepository = "R1ddle1337/komari-agent"
+$ReleaseRepository = "wugan666/komari-agent"
 
 # Parse script arguments
 for ($i = 0; $i -lt $args.Count; $i++) {

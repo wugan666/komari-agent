@@ -30,11 +30,11 @@ Linux 不写入 MOTD 警告，升级会清理旧版受管提示；远控权限�
 
 ## 更新来源
 
-源码与发布仓库：<https://github.com/R1ddle1337/komari-agent>。
+源码与发布仓库：<https://github.com/wugan666/komari-agent>。
 维护分支为 `owned`，`main` 同步安全构建配置且不用于发布，
 避免 fork 初始分支遗留的上游工作流仍可触发发布。
 上游代码通过本地 `upstream` 远程查阅，不自动同步到任何发布分支。
-安装器与 Agent 默认更新仓库均为 `R1ddle1337/komari-agent`，没有官方仓库回退。
+安装器与 Agent 默认更新仓库均为 `wugan666/komari-agent`，没有官方仓库回退。
 正式构建同时显式嵌入本仓库名称，可通过 `komari-agent --version` 核对。
 更新仓库不能通过面板或运行参数修改。
 
@@ -54,7 +54,7 @@ Go module 与内部 import 继续使用 `github.com/komari-monitor/komari-agent`
 ```bash
 curl --fail --location --proto '=https' --tlsv1.2 \
   -o komari-install.sh \
-  https://raw.githubusercontent.com/R1ddle1337/komari-agent/1.5.12/install.sh
+  https://raw.githubusercontent.com/wugan666/komari-agent/1.5.12/install.sh
 # 阅读脚本后，再使用你自己的面板地址和 Agent token 安装。
 bash komari-install.sh --install-version 1.5.12 \
   --endpoint https://your-panel.example --token YOUR_AGENT_TOKEN

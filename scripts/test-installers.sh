@@ -80,7 +80,7 @@ curl() {
 target_dir=$test_dir
 file_name=$test_name
 komari_agent_path="$test_dir/agent"
-release_repository="R1ddle1337/komari-agent"
+release_repository="wugan666/komari-agent"
 version_to_install="v1.0.0-owned.1"
 download_url="https://github.com/$release_repository/releases/download/$version_to_install/$file_name"
 service_user=root

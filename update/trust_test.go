@@ -34,19 +34,19 @@ func TestRepoSlugValidation(t *testing.T) {
 			t.Errorf("accepted invalid repo slug %q", slug)
 		}
 	}
-	if owner, repo, err := splitRepoSlug("R1ddle1337/komari-agent"); err != nil || owner != "R1ddle1337" || repo != "komari-agent" {
+	if owner, repo, err := splitRepoSlug("wugan666/komari-agent"); err != nil || owner != "wugan666" || repo != "komari-agent" {
 		t.Fatalf("valid repository rejected: %s/%s, %v", owner, repo, err)
 	}
 }
 
 func TestAssetURLMustBelongToOwnedRepository(t *testing.T) {
 	asset := expectedAssetName(runtime.GOOS, runtime.GOARCH)
-	valid := "https://github.com/R1ddle1337/komari-agent/releases/download/v1.2.3/" + asset
-	if err := validateAssetURL(valid, "R1ddle1337", "komari-agent", asset, "v1.2.3"); err != nil {
+	valid := "https://github.com/wugan666/komari-agent/releases/download/v1.2.3/" + asset
+	if err := validateAssetURL(valid, "wugan666", "komari-agent", asset, "v1.2.3"); err != nil {
 		t.Fatal(err)
 	}
 	for _, bad := range []string{
-		strings.Replace(valid, "R1ddle1337", "komari-monitor", 1),
+		strings.Replace(valid, "wugan666", "komari-monitor", 1),
 		strings.Replace(valid, "https:", "http:", 1),
 		strings.Replace(valid, "github.com", "github.com.attacker.example", 1),
 		strings.Replace(valid, "github.com", "user@github.com", 1),
@@ -54,7 +54,7 @@ func TestAssetURLMustBelongToOwnedRepository(t *testing.T) {
 		strings.Replace(valid, "v1.2.3/", "../", 1),
 		valid + "?redirect=upstream", valid + "#fragment", valid + ".sha256",
 	} {
-		if err := validateAssetURL(bad, "R1ddle1337", "komari-agent", asset, "v1.2.3"); err == nil {
+		if err := validateAssetURL(bad, "wugan666", "komari-agent", asset, "v1.2.3"); err == nil {
 			t.Errorf("accepted untrusted URL %q", bad)
 		}
 	}
@@ -83,7 +83,7 @@ func TestStableUpdateRejectsMissingChecksumAndUntrustedSource(t *testing.T) {
 		{"missing binary", func(r *selfupdate.Release) { r.AssetID = 0 }},
 		{"upstream repository", func(r *selfupdate.Release) { r.RepoOwner = "komari-monitor" }},
 		{"upstream asset URL", func(r *selfupdate.Release) {
-			r.AssetURL = strings.Replace(r.AssetURL, "R1ddle1337", "komari-monitor", 1)
+			r.AssetURL = strings.Replace(r.AssetURL, "wugan666", "komari-monitor", 1)
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -147,10 +147,10 @@ func TestSnapshotRejectsMissingChecksumAndUntrustedSource(t *testing.T) {
 	}{
 		{"missing checksum", func(r *githubRelease) { r.Assets = r.Assets[:1] }},
 		{"upstream binary", func(r *githubRelease) {
-			r.Assets[0].BrowserDownloadURL = strings.Replace(r.Assets[0].BrowserDownloadURL, "R1ddle1337", "komari-monitor", 1)
+			r.Assets[0].BrowserDownloadURL = strings.Replace(r.Assets[0].BrowserDownloadURL, "wugan666", "komari-monitor", 1)
 		}},
 		{"upstream checksum", func(r *githubRelease) {
-			r.Assets[1].BrowserDownloadURL = strings.Replace(r.Assets[1].BrowserDownloadURL, "R1ddle1337", "komari-monitor", 1)
+			r.Assets[1].BrowserDownloadURL = strings.Replace(r.Assets[1].BrowserDownloadURL, "wugan666", "komari-monitor", 1)
 		}},
 		{"checksum from another tag", func(r *githubRelease) {
 			r.Assets[1].BrowserDownloadURL = strings.Replace(r.Assets[1].BrowserDownloadURL, "Snapshot-2607061200", "Snapshot-2607061150", 1)

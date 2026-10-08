@@ -1,6 +1,6 @@
 # 自主管理的构建和发布
 
-只允许 `R1ddle1337/komari-agent` 的 `owned` 分支发布。本人仓库的 `main` 保留为
+只允许 `wugan666/komari-agent` 的 `owned` 分支发布。本人仓库的 `main` 保留为
 不触发发布的安全副本；原上游只通过独立 `upstream` 远程参考，不把其工作流直接
 同步回本人分支。所有平台、远程终端、任务执行、文件管理和自更新均保留。
 
@@ -18,8 +18,8 @@
 可在 Actions 中选择上述稳定或快照工作流，分支选择 `owned`。使用 CLI：
 
 ```sh
-gh workflow run release.yml --repo R1ddle1337/komari-agent --ref owned -f version=v1.5.12
-gh workflow run snapshot.yml --repo R1ddle1337/komari-agent --ref owned
+gh workflow run release.yml --repo wugan666/komari-agent --ref owned -f version=v1.5.12
+gh workflow run snapshot.yml --repo wugan666/komari-agent --ref owned
 ```
 
 运行开始、发布 release 和发布镜像前会核对 `owned` 分支头。期间若出现新提交，
@@ -61,7 +61,7 @@ POSIX 与 PowerShell 安装器另运行离线回归测试，各自限制 60 秒�
 
 ## Docker
 
-发布到 `ghcr.io/r1ddle1337/komari-agent`：
+发布到 `ghcr.io/wugan666/komari-agent`：
 
 - 稳定版：不可重用的版本 tag，以及可移动 `latest`。
 - 快照版：不可重用的快照版本 tag，以及可移动 `snapshot`。

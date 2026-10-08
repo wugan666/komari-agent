@@ -44,7 +44,7 @@ target_dir="/opt/komari"
 github_proxy=""
 install_version="" # New parameter for specifying version
 install_dir_specified=false
-release_repository="R1ddle1337/komari-agent"
+release_repository="wugan666/komari-agent"
 service_user="${SUDO_USER:-$(id -un)}"
 user_service=false
 

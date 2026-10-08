@@ -1,13 +1,13 @@
 # komari-agent
 
-这是由 **R1ddle1337** 管理发布的 Komari Agent fork，基于上游稳定版
+这是由 **wugan666** 管理发布的 Komari Agent fork，基于上游稳定版
 `1.5.11`，并已完整纳入上游 `main` 截至
 `6d68c72eb25d0d71bfaf3a099b101634ceeea5ab` 的变更。
 自有更新来源、安全校验和旧版面板兼容改动继续保留。
 
 - 维护分支：`owned`；`main` 同步安全构建配置，不用于发布。
 - 全部监控、远程终端、命令执行、文件管理功能保留。
-- 自动更新仅访问 `R1ddle1337/komari-agent` 的 Releases，并强制校验下载产物。
+- 自动更新仅访问 `wugan666/komari-agent` 的 Releases，并强制校验下载产物。
 - 上游不会自动合并或发布到本仓库；更新需由本仓库维护者审查并发布。
 
 安装、发布与信任边界详见 [自建版本维护说明](OWNED.md)。

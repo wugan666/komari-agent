@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   publish:
-    if: github.repository == 'R1ddle1337/komari-agent' && github.ref == 'refs/heads/owned'
+    if: github.repository == 'wugan666/komari-agent' && github.ref == 'refs/heads/owned'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -74,7 +74,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.image.outputs.tags }}
           labels: |
-            org.opencontainers.image.source=https://github.com/R1ddle1337/komari-agent
+            org.opencontainers.image.source=https://github.com/wugan666/komari-agent
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ inputs.version }}
           provenance: true

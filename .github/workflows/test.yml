@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   test:
-    if: github.repository == 'R1ddle1337/komari-agent'
+    if: github.repository == 'wugan666/komari-agent'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:

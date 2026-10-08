@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   test:
-    if: github.repository == 'R1ddle1337/komari-agent'
+    if: github.repository == 'wugan666/komari-agent'
     uses: ./.github/workflows/test.yml
 
   build:

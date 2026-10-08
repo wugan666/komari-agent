@@ -79,7 +79,7 @@ try {
         }
     }
     $BinaryName = $TestName
-    $DownloadUrl = "https://github.com/R1ddle1337/komari-agent/releases/download/v1.0.0-owned.1/$TestName"
+    $DownloadUrl = "https://github.com/wugan666/komari-agent/releases/download/v1.0.0-owned.1/$TestName"
     foreach ($script:MockMode in @('missing', 'mismatch', 'valid')) {
         [IO.File]::WriteAllText($AgentPath, "existing release`n")
         $script:ServiceStopped = $false

@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   publish:
-    if: github.repository == 'R1ddle1337/komari-agent' && github.ref == 'refs/heads/owned'
+    if: github.repository == 'wugan666/komari-agent' && github.ref == 'refs/heads/owned'
     permissions:
       contents: write
       packages: write
