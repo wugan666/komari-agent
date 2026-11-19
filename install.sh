@@ -417,6 +417,19 @@ verify_asset_checksum() {
     [ "$actual_checksum" = "$expected_checksum" ]
 }
 
+if [ -n "${KOMARI_DL_BASE:-}" ]; then
+    # Install package served by the Komari controller itself; GitHub is not used.
+    dl_base=${KOMARI_DL_BASE%/}
+    case "$dl_base" in
+        https://*) : ;;
+        http://*) log_warning "KOMARI_DL_BASE is not HTTPS; the install package is fetched over plain HTTP." ;;
+        *) log_error "KOMARI_DL_BASE must be an http(s) URL: $dl_base"; exit 1 ;;
+    esac
+    version_to_install=$(curl -fsSL --connect-timeout 15 --max-time 30 "$dl_base/VERSION" 2>/dev/null | tr -dc 'A-Za-z0-9._+-')
+    [ -n "$version_to_install" ] || version_to_install="bundled"
+    download_url="$dl_base/$file_name"
+    log_info "Install source: ${CYAN}$dl_base${NC} (controller, no GitHub)"
+else
 version_to_install="latest"
 if [ -n "$install_version" ]; then
     if [ "$install_version" = "snapshot" ]; then
@@ -454,6 +467,7 @@ if [ -n "$github_proxy" ]; then
 else
     # Direct access to GitHub releases
     download_url="https://github.com/${release_repository}/releases/${download_path}/${file_name}"
+fi
 fi
 
 log_step "Creating installation directory: ${GREEN}$target_dir${NC}"
