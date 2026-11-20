@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -103,6 +102,12 @@ var RootCmd = &cobra.Command{
 				return fmt.Errorf("auto-discovery failed: %w", err)
 			}
 		}
+		if err := pkg_flags.CaptureStartupConfig(map[string]interface{}{
+			"warning_panel_host":  warningPanelHost,
+			"warning_run_as_user": warningRunAsUser,
+		}); err != nil {
+			return fmt.Errorf("failed to capture startup configuration: %w", err)
+		}
 		diskList, err := monitoring.DiskList()
 		if err != nil {
 			log.Println("Failed to get disk list:", err)
@@ -118,32 +123,20 @@ var RootCmd = &cobra.Command{
 		if flags.IgnoreUnsafeCert {
 			http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 		}
-		// 自动更新
+		// 自动更新：后台立即检查一次并按周期复查，避免启动被 GitHub 访问阻塞
 		if !flags.DisableAutoUpdate {
-			go func() {
-				if handleUpdateCheckResult(update.CheckAndUpdate(), shutdown) {
-					return
-				}
-				update.DoUpdateWorks(func() { shutdown.shutdown(42) })
-			}()
+			go update.DoUpdateWorks(func() {
+				shutdown.shutdown(42)
+			})
 		}
 		go server.DoUploadBasicInfoWorks()
 		for {
 			go server.UpdateBasicInfo()
-			server.EstablishWebSocketConnection()
+			server.EstablishWebSocketConnection(func() {
+				shutdown.shutdown(42)
+			})
 		}
 	},
-}
-
-func handleUpdateCheckResult(err error, shutdown *shutdownCoordinator) bool {
-	if errors.Is(err, update.ErrRestartRequired) {
-		shutdown.shutdown(42)
-		return true
-	}
-	if err != nil {
-		log.Println("[ERROR]", err)
-	}
-	return false
 }
 
 func Execute() {

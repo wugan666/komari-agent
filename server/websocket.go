@@ -26,6 +26,8 @@ var (
 	v2AckMu       sync.Mutex
 	v2AckEventIDs []string
 	v2SeenEvents  = make(map[string]time.Time)
+	terminalDialMu sync.Mutex
+	terminalDials  = make(map[string]struct{})
 )
 
 const (
@@ -33,7 +35,7 @@ const (
 	v2SeenEventLimit = 4096
 )
 
-func EstablishWebSocketConnection() {
+func EstablishWebSocketConnection(onRestartRequired func()) {
 	var conn *ws.SafeConn
 	defer func() {
 		if conn != nil {
@@ -71,7 +73,7 @@ func EstablishWebSocketConnection() {
 						log.Println("v2 WebSocket connected")
 						done := make(chan struct{})
 						readDone = done
-						go handleWebSocketMessages(conn, done)
+						go handleWebSocketMessages(conn, done, onRestartRequired)
 						break
 					} else {
 						log.Println("Failed to connect to WebSocket:", err)
@@ -82,7 +84,7 @@ func EstablishWebSocketConnection() {
 
 				if retry > flags.MaxRetries {
 					log.Println("Max retries reached.")
-					conn, err = runPostFallback(buildWebSocketEndpoint(), interval)
+					conn, err = runPostFallback(buildWebSocketEndpoint(), interval, onRestartRequired)
 					if err != nil {
 						log.Println("POST fallback stopped:", err)
 						return
@@ -91,7 +93,7 @@ func EstablishWebSocketConnection() {
 
 					done := make(chan struct{})
 					readDone = done
-					go handleWebSocketMessages(conn, done)
+					go handleWebSocketMessages(conn, done, onRestartRequired)
 				}
 			}
 			if conn == nil || time.Now().Before(nextReportAt) {
@@ -144,11 +146,11 @@ func buildWebSocketEndpoint() string {
 	return websocketEndpoint
 }
 
-func runPostFallback(websocketEndpoint string, interval float64) (*ws.SafeConn, error) {
+func runPostFallback(websocketEndpoint string, interval float64, onRestartRequired func()) (*ws.SafeConn, error) {
 	log.Println("Entering v2 POST fallback mode")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go runV2PullLoop(ctx)
+	go runV2PullLoop(ctx, onRestartRequired)
 
 	reportTicker := time.NewTicker(time.Duration(interval * float64(time.Second)))
 	defer reportTicker.Stop()
@@ -166,7 +168,7 @@ func runPostFallback(websocketEndpoint string, interval float64) (*ws.SafeConn, 
 				continue
 			}
 			clearV2AckEventIDs(ackIDs)
-			processV2ResponseEvents(resp)
+			processV2ResponseEvents(resp, onRestartRequired)
 		case <-reconnectTicker.C:
 			conn, err := connectWebSocket(websocketEndpoint)
 			if err == nil {
@@ -177,7 +179,7 @@ func runPostFallback(websocketEndpoint string, interval float64) (*ws.SafeConn, 
 	}
 }
 
-func runV2PullLoop(ctx context.Context) {
+func runV2PullLoop(ctx context.Context, onRestartRequired func()) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -187,7 +189,7 @@ func runV2PullLoop(ctx context.Context) {
 		pullID := fmt.Sprintf("pull-%d", time.Now().UnixNano())
 		ackIDs := snapshotV2AckEventIDs()
 		payload := v2.NewRequest(pullID, v2.MethodAgentPull, map[string]interface{}{
-			"capabilities":  []string{"exec", "ping", "message", "event", "terminal", "file"},
+			"capabilities":  []string{"exec", "ping", "message", "event", "terminal", "file", "startup_config", "switch_version"},
 			"ack_event_ids": ackIDs,
 		})
 		resp, err := postV2RequestContext(ctx, payload)
@@ -206,7 +208,7 @@ func runV2PullLoop(ctx context.Context) {
 			continue
 		}
 		clearV2AckEventIDs(ackIDs)
-		processV2ResponseEvents(resp)
+		processV2ResponseEvents(resp, onRestartRequired)
 	}
 }
 
@@ -252,7 +254,7 @@ func postV2RequestContext(ctx context.Context, payload []byte) (*v2.Response, er
 	return rpcResp, nil
 }
 
-func processV2ResponseEvents(resp *v2.Response) {
+func processV2ResponseEvents(resp *v2.Response, onRestartRequired func()) {
 	if resp == nil || resp.Result == nil {
 		return
 	}
@@ -262,7 +264,7 @@ func processV2ResponseEvents(resp *v2.Response) {
 		return
 	}
 	for _, event := range result.Events {
-		if processV2Event(nil, event.Method, event.Params, event.ID) {
+		if processV2Event(nil, event.Method, event.Params, event.ID, onRestartRequired) {
 			addV2AckEventID(event.ID)
 		}
 	}
@@ -350,7 +352,7 @@ func connectWebSocket(websocketEndpoint string) (*ws.SafeConn, error) {
 	return ws.NewSafeConn(conn), nil
 }
 
-func handleWebSocketMessages(conn *ws.SafeConn, done chan<- struct{}) {
+func handleWebSocketMessages(conn *ws.SafeConn, done chan<- struct{}, onRestartRequired func()) {
 	defer close(done)
 	for {
 		_, message_raw, err := conn.ReadMessage()
@@ -368,11 +370,11 @@ func handleWebSocketMessages(conn *ws.SafeConn, done chan<- struct{}) {
 			log.Printf("Bad v2 ws message version %q", message.JSONRPC)
 			continue
 		}
-		processV2Event(conn, message.Method, message.Params, "")
+		processV2Event(conn, message.Method, message.Params, "", onRestartRequired)
 	}
 }
 
-func processV2Event(conn *ws.SafeConn, method string, params interface{}, eventID string) bool {
+func processV2Event(conn *ws.SafeConn, method string, params interface{}, eventID string, onRestartRequired func()) bool {
 	if !markV2EventSeen(eventID) {
 		return true
 	}
@@ -421,6 +423,21 @@ func processV2Event(conn *ws.SafeConn, method string, params interface{}, eventI
 		} else {
 			log.Printf("bad v2 file params: %v", err)
 		}
+	case v2.MethodAgentStartupConfig:
+		var p v2.StartupConfigParams
+		if err := v2.BindParams(params, &p); err == nil && p.RequestID != "" {
+			go handleStartupConfig(p)
+			return true
+		}
+		log.Print("bad v2 startup configuration params")
+	case v2.MethodAgentSwitchVersion:
+		var p v2.SwitchVersionParams
+		if err := v2.BindParams(params, &p); err != nil {
+			log.Printf("bad v2 switch version params: %v", err)
+		} else {
+			go switchAgentVersion(p.Version, onRestartRequired)
+			return true
+		}
 	default:
 		log.Printf("unknown v2 event method %s", method)
 	}
@@ -431,6 +448,21 @@ func processV2Event(conn *ws.SafeConn, method string, params interface{}, eventI
 
 // establishTerminalConnection 建立终端连接并使用terminal包处理终端操作
 func establishTerminalConnection(token, id, endpoint string) {
+	if id != "" {
+		terminalDialMu.Lock()
+		if _, active := terminalDials[id]; active {
+			terminalDialMu.Unlock()
+			return
+		}
+		terminalDials[id] = struct{}{}
+		terminalDialMu.Unlock()
+		defer func() {
+			terminalDialMu.Lock()
+			delete(terminalDials, id)
+			terminalDialMu.Unlock()
+		}()
+	}
+
 	endpoint = strings.TrimSuffix(endpoint, "/") + "/api/clients/terminal?token=" + token + "&id=" + id
 	endpoint = "ws" + strings.TrimPrefix(endpoint, "http")
 
@@ -441,19 +473,39 @@ func establishTerminalConnection(token, id, endpoint string) {
 		log.Printf("Warning: Failed to convert Terminal WebSocket IDN to ASCII: %v", err)
 	}
 
-	// 使用与主 WS 相同的拨号策略
-	dialer := newWSDialer()
+	// 会话保留期间持续重试，避免一次临时网络失败让终端请求永久丢失。
+	const retryWindow = 5 * time.Minute
+	deadline := time.Now().Add(retryWindow)
+	for time.Now().Before(deadline) {
+		dialer := newWSDialer()
+		conn, _, err := dialer.Dial(endpoint, nil)
+		if err != nil {
+			log.Println("Failed to establish terminal connection, retrying in 15s:", utils.SanitizeHTTPError(err))
+			wait := 15 * time.Second
+			if remaining := time.Until(deadline); remaining < wait {
+				wait = remaining
+			}
+			if wait > 0 {
+				time.Sleep(wait)
+			}
+			continue
+		}
 
-	conn, _, err := dialer.Dial(endpoint, nil)
-	if err != nil {
-		log.Println("Failed to establish terminal connection:", utils.SanitizeHTTPError(err))
-		return
-	}
-
-	// 启动终端
-	terminal.StartTerminal(conn, id)
-	if conn != nil {
-		conn.Close()
+		retry := terminal.StartTerminal(conn, id)
+		_ = conn.Close()
+		if !retry {
+			break
+		}
+		// 每次已建立的连接意外断开后，重新按完整保留窗口等待恢复。
+		deadline = time.Now().Add(retryWindow)
+		// 会话已建连后因对端断线返回 retry，短暂间隔后即可重连，不必等满 15s。
+		wait := 2 * time.Second
+		if remaining := time.Until(deadline); remaining < wait {
+			wait = remaining
+		}
+		if wait > 0 {
+			time.Sleep(wait)
+		}
 	}
 }
 

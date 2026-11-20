@@ -27,11 +27,42 @@ for ($i = 0; $i -lt $args.Count; $i++) {
     }
 }
 
-# Ensure running as Administrator
+# Quote a value the way the Windows C runtime command-line parser expects,
+# so arguments survive command-line re-quoting boundaries (Start-Process
+# -ArgumentList, powershell -File, cmd /c, ...) even when they contain
+# spaces such as C:\Users\John Doe\... (komari-monitor/komari#655).
+function ConvertTo-CommandLineArg {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
+    if ($Value -notmatch '[\s"]') { return $Value }
+    $escaped = $Value -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1'
+    return '"' + $escaped + '"'
+}
+
+# Ensure running as Administrator. Instead of failing, re-launch this script
+# elevated and re-quote its own arguments: wrappers that elevate externally
+# (Start-Process and friends) regularly split arguments of paths containing
+# spaces, which breaks installs for user names with spaces (komari#655).
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
     ).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)) {
-    Log-Error "Please run this script as Administrator."
-    exit 1
+    if ([string]::IsNullOrEmpty($PSCommandPath)) {
+        Log-Error "Cannot elevate a script that was not run from a file. Save it as install.ps1 and run it again as Administrator."
+        exit 1
+    }
+    Log-Warning "Administrator privileges are required. Requesting elevation, please accept the UAC prompt..."
+    $hostExe = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+    $relaunchArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (ConvertTo-CommandLineArg $PSCommandPath))
+    foreach ($a in $args) {
+        $relaunchArgs += ConvertTo-CommandLineArg ([string]$a)
+    }
+    try {
+        $elevated = Start-Process -FilePath $hostExe -Verb RunAs -Wait -PassThru -ArgumentList ($relaunchArgs -join ' ')
+        exit $elevated.ExitCode
+    }
+    catch {
+        Log-Error "Elevation failed or was cancelled: $_"
+        Log-Error "Please run this script as Administrator."
+        exit 1
+    }
 }
 
 # Prepare GitHub proxy display
@@ -287,7 +318,23 @@ function Get-LatestSnapshotVersion {
 }
 
 $versionToInstall = ""
-if ($InstallVersion -ne "" -and $InstallVersion -ine "latest") {
+# Install package served by the Komari panel itself; GitHub is not used.
+$DownloadBase = "$env:KOMARI_DL_BASE".TrimEnd('/')
+if ($DownloadBase -ne "") {
+    if ($DownloadBase -notmatch '^https?://') {
+        Log-Error "KOMARI_DL_BASE must be an http(s) URL: $DownloadBase"
+        exit 1
+    }
+    try {
+        $versionToInstall = (New-Object System.Net.WebClient).DownloadString("$DownloadBase/VERSION").Trim()
+    }
+    catch {
+        Log-Error "Failed to read the agent version from ${DownloadBase}: $_"
+        exit 1
+    }
+    Log-Info "Install source: $DownloadBase (panel, no GitHub)"
+}
+elseif ($InstallVersion -ne "" -and $InstallVersion -ine "latest") {
     Log-Info "Attempting to install specified version: $InstallVersion"
     if ($InstallVersion -ieq "snapshot") {
         Log-Info "Resolving the latest snapshot version..."
@@ -335,7 +382,7 @@ Log-Success "Installing Komari Agent version: $versionToInstall"
 
 # Construct download URL
 $BinaryName = "komari-agent-windows-$arch.exe"
-$DownloadUrl = if ($GitHubProxy) { "$GitHubProxy/https://github.com/$ReleaseRepository/releases/download/$versionToInstall/$BinaryName" } else { "https://github.com/$ReleaseRepository/releases/download/$versionToInstall/$BinaryName" }
+$DownloadUrl = if ($DownloadBase -ne "") { "$DownloadBase/$BinaryName" } elseif ($GitHubProxy) { "$GitHubProxy/https://github.com/$ReleaseRepository/releases/download/$versionToInstall/$BinaryName" } else { "https://github.com/$ReleaseRepository/releases/download/$versionToInstall/$BinaryName" }
 
 # Download and install
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
@@ -373,9 +420,10 @@ Log-Success "Downloaded and saved to $AgentPath"
 # Register and start service
 Log-Step "Configuring Windows service with nssm..."
 $argString = $KomariArgs -join ' '
-# Ensure InstallDir and AgentPath are quoted if they contain spaces
-$quotedAgentPath = "`"$AgentPath`""
-nssm install $ServiceName $quotedAgentPath $argString
+# The application path is passed WITHOUT literal quotes: PowerShell already
+# quotes native arguments containing spaces on the command line, while
+# embedded quotes made nssm store a broken Application path (komari-agent#118).
+nssm install $ServiceName $AgentPath $argString
 # Set display name and startup type using nssm
 nssm set $ServiceName DisplayName "Komari Agent Service"
 nssm set $ServiceName Start SERVICE_AUTO_START

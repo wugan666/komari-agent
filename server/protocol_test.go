@@ -150,7 +150,7 @@ func TestV2WebSocketAndDisabledRemoteControl(t *testing.T) {
 		}
 	}
 	done := make(chan struct{})
-	go handleWebSocketMessages(conn, done)
+	go handleWebSocketMessages(conn, done, nil)
 	select {
 	case body := <-result:
 		params := body["params"].(map[string]interface{})

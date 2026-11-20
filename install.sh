@@ -44,6 +44,7 @@ target_dir="/opt/komari"
 github_proxy=""
 install_version="" # New parameter for specifying version
 install_dir_specified=false
+force_replace=false
 release_repository="wugan666/komari-agent"
 service_user="${SUDO_USER:-$(id -un)}"
 user_service=false
@@ -97,6 +98,10 @@ while [ $# -gt 0 ]; do
         --install-version)
             install_version="$2"
             shift 2
+            ;;
+        --install-force)
+            force_replace=true
+            shift
             ;;
         --install-no-mirror) # 默认已禁用自动镜像，保留原有安装参数。
             shift
@@ -162,6 +167,77 @@ else
     log_config "  Agent version: ${GREEN}Latest${NC}"
 fi
 echo ""
+
+# Panel endpoint and token this installation will use.
+new_endpoint=""
+new_token=""
+prev_arg=""
+for arg in $komari_args; do
+    case "$prev_arg" in
+        -e|--endpoint) new_endpoint="$arg" ;;
+        -t|--token) new_token="$arg" ;;
+    esac
+    case "$arg" in
+        --endpoint=*) new_endpoint="${arg#--endpoint=}" ;;
+        --token=*) new_token="${arg#--token=}" ;;
+    esac
+    prev_arg="$arg"
+done
+
+# Print the value of an agent option from a systemd unit's ExecStart line.
+unit_arg() {
+    sed -n 's/^ExecStart=//p' "$1" | head -n 1 | awk -v s="$2" -v l="$3" '{
+        for (i = 1; i <= NF; i++) {
+            if (($i == s || $i == l) && i < NF) { print $(i + 1); exit }
+            if (index($i, l "=") == 1) { print substr($i, length(l) + 2); exit }
+        }
+    }'
+}
+
+# Several agents can share one machine as long as each has its own service
+# name. Refuse to silently take over a service that reports to another panel.
+check_panel_conflict() {
+    own_unit="/etc/systemd/system/${service_name}.service"
+    if [ "$user_service" = true ] || [ "$force_replace" = true ] || [ -z "$new_endpoint" ] || [ ! -f "$own_unit" ]; then
+        return 0
+    fi
+    old_endpoint=$(unit_arg "$own_unit" -e --endpoint)
+    if [ -n "$old_endpoint" ] && [ "${old_endpoint%/}" != "${new_endpoint%/}" ]; then
+        log_error "Service ${service_name} already reports to a different panel: ${old_endpoint}"
+        log_info "Installing now would replace that agent. To run both side by side, add:"
+        log_info "  --install-service-name komari-agent-<name> --install-dir /opt/komari-<name>"
+        log_info "To replace it on purpose, add --install-force."
+        exit 1
+    fi
+}
+
+# Two agents with the same panel and token keep disconnecting each other, so a
+# differently named service that duplicates this installation is removed.
+remove_duplicate_agents() {
+    if [ "$user_service" = true ] || [ -z "$new_token" ] || [ -z "$new_endpoint" ] || [ ! -d /etc/systemd/system ]; then
+        return 0
+    fi
+    for unit in /etc/systemd/system/*.service; do
+        if [ ! -f "$unit" ] || [ "$unit" = "/etc/systemd/system/${service_name}.service" ]; then
+            continue
+        fi
+        if [ "$(unit_arg "$unit" -t --token)" != "$new_token" ]; then
+            continue
+        fi
+        other_endpoint=$(unit_arg "$unit" -e --endpoint)
+        if [ "${other_endpoint%/}" != "${new_endpoint%/}" ]; then
+            continue
+        fi
+        other_service=$(basename "$unit" .service)
+        log_warning "Service ${other_service} uses the same panel and token; removing it so only one agent reports for this node."
+        systemctl stop "${other_service}.service" 2>/dev/null || true
+        systemctl disable "${other_service}.service" 2>/dev/null || true
+        rm -f "$unit"
+        systemctl daemon-reload
+    done
+}
+
+check_panel_conflict
 
 # Function to uninstall the previous installation
 uninstall_previous() {
@@ -504,6 +580,7 @@ if [ "$EUID" -eq 0 ] && [ "$service_user" != "root" ]; then
     chown "$service_user" "$stage_dir/$file_name" || exit 1
 fi
 uninstall_previous
+remove_duplicate_agents
 if ! mv -f "$stage_dir/$file_name" "$komari_agent_path"; then
     log_error "Failed to replace the agent binary. Check the existing service before retrying."
     exit 1

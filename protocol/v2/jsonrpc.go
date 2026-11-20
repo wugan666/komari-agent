@@ -6,19 +6,22 @@ import (
 )
 
 const (
-	Version               = "2.0"
-	MethodAgentReport     = "agent.report"
-	MethodAgentBasicInfo  = "agent.basicInfo"
-	MethodAgentPingResult = "agent.pingResult"
-	MethodAgentTaskResult = "agent.taskResult"
-	MethodAgentExec       = "agent.exec"
-	MethodAgentPing       = "agent.ping"
-	MethodAgentMessage    = "agent.message"
-	MethodAgentEvent      = "agent.event"
-	MethodAgentTerminal   = "agent.terminal.request"
-	MethodAgentPull       = "agent.pull"
-	MethodAgentFile       = "agent.file"
-	MethodAgentFileResult = "agent.file.result"
+	Version                        = "2.0"
+	MethodAgentReport              = "agent.report"
+	MethodAgentBasicInfo           = "agent.basicInfo"
+	MethodAgentPingResult          = "agent.pingResult"
+	MethodAgentTaskResult          = "agent.taskResult"
+	MethodAgentExec                = "agent.exec"
+	MethodAgentPing                = "agent.ping"
+	MethodAgentMessage             = "agent.message"
+	MethodAgentEvent               = "agent.event"
+	MethodAgentTerminal            = "agent.terminal.request"
+	MethodAgentPull                = "agent.pull"
+	MethodAgentFile                = "agent.file"
+	MethodAgentFileResult          = "agent.file.result"
+	MethodAgentStartupConfig       = "agent.startupConfig"
+	MethodAgentStartupConfigResult = "agent.startupConfig.result"
+	MethodAgentSwitchVersion       = "agent.switchVersion"
 )
 
 type Request struct {
@@ -59,6 +62,21 @@ type Event struct {
 type EventResult struct {
 	Status string  `json:"status,omitempty"`
 	Events []Event `json:"events,omitempty"`
+}
+
+type StartupConfigParams struct {
+	RequestID string `json:"request_id"`
+}
+
+type SwitchVersionParams struct {
+	Version string `json:"version"`
+}
+
+// Config is the unredacted, flat effective startup configuration.
+type StartupConfigResult struct {
+	RequestID string                 `json:"request_id"`
+	Config    map[string]interface{} `json:"config,omitempty"`
+	Error     string                 `json:"error,omitempty"`
 }
 
 // FileOperation is metadata-only. File contents travel through the dedicated
